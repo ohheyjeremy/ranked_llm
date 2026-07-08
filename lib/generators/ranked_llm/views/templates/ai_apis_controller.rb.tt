@@ -1,0 +1,39 @@
+module Settings
+  class AiApisController < ApplicationController
+    before_action :require_account! # TODO: replace with this app's real auth boundary
+    before_action :set_credential, only: [ :destroy, :move ]
+
+    def index
+      @credentials = current_account.llm_credentials.ranked
+      usage_this_month = current_account.llm_usage_records.this_month.group(:provider, :model)
+      @monthly_cost_by_provider_model = usage_this_month.sum(:cost_usd)
+      @monthly_tokens_by_provider_model = usage_this_month.sum("input_tokens + output_tokens")
+    end
+
+    def create
+      provider, model = params[:llm_credential][:provider_and_model].to_s.split(":", 2)
+      credential = current_account.llm_credentials.new(provider: provider, model: model, api_key: params[:llm_credential][:api_key])
+      if credential.save
+        redirect_to settings_ai_apis_path, notice: "AI API added."
+      else
+        redirect_to settings_ai_apis_path, alert: credential.errors.full_messages.to_sentence
+      end
+    end
+
+    def destroy
+      @credential.destroy
+      redirect_to settings_ai_apis_path, notice: "AI API removed."
+    end
+
+    def move
+      @credential.update!(position: params[:position].to_i.clamp(1, 100))
+      head :ok
+    end
+
+    private
+
+    def set_credential
+      @credential = current_account.llm_credentials.find(params[:id])
+    end
+  end
+end

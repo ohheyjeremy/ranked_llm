@@ -1,0 +1,66 @@
+<div class="max-w-2xl mx-auto mt-8">
+  <h1 class="text-2xl font-bold mb-2">AI APIs</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    Every AI feature in this app uses these credentials in rank order, falling back to the next one if a call
+    fails. Drag to reorder.
+  </p>
+
+  <div class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+    <%%= form_with url: settings_ai_apis_path, method: :post, class: "space-y-4" do |f| %>
+      <div>
+        <%%= label_tag "llm_credential_provider_and_model", "Provider", class: "block text-sm font-medium mb-1" %>
+        <%%= select_tag "llm_credential[provider_and_model]", grouped_options_for_select(Llm::ProviderRegistry.grouped_options),
+              class: "w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white" %>
+      </div>
+      <div>
+        <%%= label_tag "llm_credential_api_key", "API key", class: "block text-sm font-medium mb-1" %>
+        <%%= password_field_tag "llm_credential[api_key]", nil, placeholder: "paste key…", autocomplete: "off",
+              class: "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" %>
+      </div>
+      <%%= f.submit "Add", class: "rounded-md bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium px-4 py-2 cursor-pointer" %>
+    <%% end %>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100" data-controller="ranked-list">
+    <%% if @credentials.empty? %>
+      <p class="px-5 py-6 text-sm text-slate-500 text-center">No AI APIs configured yet — every AI feature will be unavailable until you add one.</p>
+    <%% end %>
+    <%% @credentials.each do |credential| %>
+      <div class="flex items-center justify-between px-5 py-3 cursor-move" data-ranked-list-target="item" data-move-url="<%%= move_settings_ai_api_path(credential) %>">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="text-slate-300" aria-hidden="true">⠿</span>
+          <div class="min-w-0">
+            <p class="font-medium text-sm">
+              <%%= Llm::ProviderRegistry::PROVIDERS.dig(credential.provider, :label) || credential.provider %>
+              <span class="font-normal text-slate-500">· <%%= credential.model %></span>
+              <%% if Llm::ProviderRegistry.vision_capable?(credential.provider, credential.model) %>
+                <span class="rounded bg-slate-100 text-slate-500 text-xs px-1.5 py-0.5 align-middle">vision</span>
+              <%% end %>
+            </p>
+            <%% pricing = Llm::ProviderRegistry.pricing_for(credential.provider, credential.model) %>
+            <%% tokens_this_month = @monthly_tokens_by_provider_model[[ credential.provider, credential.model ]] %>
+            <%% cost_this_month = @monthly_cost_by_provider_model[[ credential.provider, credential.model ]] %>
+            <p class="text-xs text-slate-500">
+              Rank #<%%= credential.position %>
+              ·
+              <%% if pricing %>
+                <%%= number_to_currency(pricing[:input_price_per_million], precision: 2) %> / <%%= number_to_currency(pricing[:output_price_per_million], precision: 2) %> per 1M tokens (in/out)
+              <%% else %>
+                pricing varies
+              <%% end %>
+              <%% if tokens_this_month.present? && tokens_this_month.positive? %>
+                · <%%= number_with_delimiter(tokens_this_month) %> tokens this month<%% if cost_this_month.present? %> (~<%%= number_to_currency(cost_this_month, precision: 4) %>)<%% end %>
+              <%% end %>
+            </p>
+          </div>
+        </div>
+        <%%= button_to "Remove", settings_ai_api_path(credential), method: :delete,
+              data: { turbo_confirm: "Remove this AI API? Anything using it will fall through to the next rank." },
+              class: "text-xs text-rose-600 hover:underline cursor-pointer shrink-0" %>
+      </div>
+    <%% end %>
+  </div>
+  <p class="text-xs text-slate-400 mt-3">
+    Pricing is seeded from each provider's public rates and may drift — verify against their current pricing page before budgeting off it.
+  </p>
+</div>

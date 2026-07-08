@@ -1,0 +1,18 @@
+class CreateLlmUsageRecords < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def change
+    create_table :llm_usage_records do |t|
+      t.references :owner, polymorphic: true, null: false
+      t.string :provider, null: false
+      t.string :model, null: false
+      t.integer :input_tokens, null: false
+      t.integer :output_tokens, null: false
+      # Nullable: some models (e.g. openrouter/auto) have no fixed price.
+      t.decimal :cost_usd, precision: 12, scale: 6
+
+      t.timestamps
+    end
+
+    add_index :llm_usage_records, [ :owner_type, :owner_id, :created_at ], name: "index_llm_usage_records_on_owner_and_created_at"
+    add_index :llm_usage_records, [ :owner_type, :owner_id, :provider, :model ], name: "index_llm_usage_records_on_owner_and_provider_and_model"
+  end
+end

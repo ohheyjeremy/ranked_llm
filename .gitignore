@@ -1,0 +1,7 @@
+/.bundle/
+/pkg/
+/Gemfile.lock
+**/log/
+**/tmp/
+*.sqlite3
+.DS_Store
