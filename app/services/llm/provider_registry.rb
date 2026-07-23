@@ -53,6 +53,17 @@ module Llm
           "pixtral-12b-latest" => { vision: true, input_price_per_million: 0.15, output_price_per_million: 0.15 }
         }
       },
+      "kimi" => {
+        label: "Kimi (Moonshot AI)",
+        base_uri: "https://api.moonshot.ai/v1",
+        # Pricing here is the standard (cache-miss) input rate — this gem
+        # doesn't model cache-hit discounts for any provider.
+        models: {
+          "kimi-k3" => { vision: true, input_price_per_million: 3.00, output_price_per_million: 15.00 },
+          "kimi-k2.7-code" => { vision: false, input_price_per_million: 0.95, output_price_per_million: 4.00 },
+          "kimi-k2.6" => { vision: true, input_price_per_million: 0.95, output_price_per_million: 4.00 }
+        }
+      },
       "openrouter" => {
         label: "OpenRouter",
         base_uri: "https://openrouter.ai/api/v1",
