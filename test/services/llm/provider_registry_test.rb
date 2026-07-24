@@ -19,4 +19,17 @@ class Llm::ProviderRegistryTest < ActiveSupport::TestCase
   test "vision_capable? is false for unknown provider/model" do
     assert_not Llm::ProviderRegistry.vision_capable?("nope", "nope")
   end
+
+  test "kimi models are registered with the OpenAI-compatible adapter's base URI" do
+    assert Llm::ProviderRegistry.valid?("kimi", "kimi-k3")
+    assert Llm::ProviderRegistry.valid?("kimi", "kimi-k2.7-code")
+    assert Llm::ProviderRegistry.valid?("kimi", "kimi-k2.6")
+    assert_equal "https://api.moonshot.ai/v1", Llm::ProviderRegistry.base_uri_for("kimi")
+  end
+
+  test "kimi-k3 and kimi-k2.6 are vision-capable, kimi-k2.7-code is not" do
+    assert Llm::ProviderRegistry.vision_capable?("kimi", "kimi-k3")
+    assert Llm::ProviderRegistry.vision_capable?("kimi", "kimi-k2.6")
+    assert_not Llm::ProviderRegistry.vision_capable?("kimi", "kimi-k2.7-code")
+  end
 end
