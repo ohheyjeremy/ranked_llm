@@ -16,4 +16,12 @@ require "rails/test_help"
 require "minitest/autorun"
 
 class ActiveSupport::TestCase
+  # Task types are global config, so a test that declares some has to put them
+  # back or it leaks into whatever runs next.
+  def with_task_types(types)
+    RankedLlm.configure { |config| config.task_types = types }
+    yield
+  ensure
+    RankedLlm.reset_configuration!
+  end
 end

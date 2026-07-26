@@ -19,23 +19,41 @@
 # are attempted — everything else has no such constraint.
 #
 # `owner` is whatever model included Llm::Owned (Account, Team, User, ...).
+#
+# Which list gets tried depends on the caller's task_type (see Llm::TaskType),
+# so an owner can rank one kind of work differently from another. A task type
+# the owner hasn't ranked separately falls through to the DEFAULT list, so an
+# app that declares no task types behaves exactly as it always did.
+#
+# Once the owner's own credentials are exhausted, anything returned by
+# #shared_llm_credentials is tried as a last resort (see Llm::Owned).
+#
+# After a successful call_tool, #last_provider/#last_model report which
+# credential actually served it, which is not necessarily rank 1 if earlier
+# ones failed over. Callers that want to record provenance on whatever they
+# build from the result read these off the same instance right afterwards.
 module Llm
   class Client
     class NoCredentialsError < StandardError; end
     class AllProvidersFailedError < StandardError; end
 
-    def self.for(owner)
-      new(owner)
+    attr_reader :last_provider, :last_model
+
+    def self.for(owner, task_type: TaskType::DEFAULT)
+      new(owner, task_type: task_type)
     end
 
-    def initialize(owner)
+    def initialize(owner, task_type: TaskType::DEFAULT)
       @owner = owner
+      @task_type = task_type.to_s
     end
 
     def call_tool(system:, tool:, max_tokens:, content_blocks: nil, messages: nil)
       needs_vision = content_blocks&.any? { |block| block[:kind] == :image } || false
 
-      credentials = @owner.llm_credentials.ranked.to_a
+      credentials = ranked_for_task_type
+      # Borrowed keys are the last resort: the owner's own always come first.
+      credentials.concat(@owner.shared_llm_credentials)
       credentials = credentials.select { |c| Llm::ProviderRegistry.vision_capable?(c.provider, c.model) } if needs_vision
       raise NoCredentialsError, "No configured AI API credential can handle this request" if credentials.empty?
 
@@ -43,6 +61,8 @@ module Llm
       credentials.each do |credential|
         result = adapter_for(credential).call_tool(system: system, tool: tool, max_tokens: max_tokens, content_blocks: content_blocks, messages: messages)
         record_usage(credential, result)
+        @last_provider = credential.provider
+        @last_model = credential.model
         return result.data
       rescue StandardError => e
         last_error = e
@@ -53,6 +73,17 @@ module Llm
     end
 
     private
+
+    # A task type only overrides the default list when the owner has actually
+    # ranked something for it. Ranking nothing means "no opinion", which is
+    # different from "no credentials for this".
+    def ranked_for_task_type
+      own = @owner.llm_credentials.for_task_type(@task_type).ranked.to_a
+      return own if own.any?
+      return [] if @task_type == TaskType::DEFAULT
+
+      @owner.llm_credentials.for_task_type(TaskType::DEFAULT).ranked.to_a
+    end
 
     def adapter_for(credential)
       case credential.provider
@@ -67,7 +98,10 @@ module Llm
         model: credential.model,
         input_tokens: result.input_tokens,
         output_tokens: result.output_tokens,
-        cost_usd: ProviderRegistry.cost_for(credential.provider, credential.model, input_tokens: result.input_tokens, output_tokens: result.output_tokens)
+        cost_usd: ProviderRegistry.cost_for(credential.provider, credential.model, input_tokens: result.input_tokens, output_tokens: result.output_tokens),
+        # Recorded against the borrowing owner, so a shared-pool cap can be
+        # computed without joining back to whoever owns the key.
+        shared: credential.shared?
       )
     rescue StandardError => e
       # Never let usage logging break a successful call.

@@ -3,6 +3,59 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-07-26
+
+Brings the gem up to what Progentick's own copy had grown into, generalised so
+none of it assumes a particular host app. **Existing installs need a migration**
+(`bin/rails generate ranked_llm:upgrade`), but no code changes: every existing
+credential lands on the `default` list, which is the one that already served
+everything.
+
+### Added
+
+- **Per-task-type ranking.** An owner can rank credentials differently for
+  different kinds of work, so a cheap fast model can take one job while
+  something stronger takes another. Declare the jobs the app actually does:
+
+  ```ruby
+  RankedLlm.configure do |config|
+    config.task_types = { "chat" => "Chat replies", "summarise" => "Summarising" }
+  end
+  ```
+
+  then `Llm::Client.for(owner, task_type: "chat")`. A task type with no ranking
+  of its own falls through to the `default` list, so an app that declares
+  nothing behaves exactly as before. Adds `Llm::TaskType`,
+  `RankedLlm.configure`, `Llm::Credential#task_type` and
+  `Llm::Credential.for_task_type`.
+- **Shared credential pools.** `Llm::Owned#shared_llm_credentials` (empty by
+  default) lets an owner fall back to keys borrowed from elsewhere once its own
+  are exhausted: a platform's own keys for accounts that haven't brought one, a
+  parent organisation's keys, a plan allowance. Wrap them in
+  `Llm::SharedCredential`. Usage is recorded against the *borrowing* owner with
+  `shared: true`, so a cap or a bill can be computed straight off
+  `llm_usage_records` (`.shared` / `.own` scopes) without joining back to the
+  key's owner. The gem takes no view on where a pool comes from or who may use
+  it — gating goes in the override.
+- **`Llm::Client#last_provider` / `#last_model`**, reporting which credential
+  actually served the last call, which is not necessarily rank 1 when earlier
+  ones failed over. For recording provenance on whatever gets built from the
+  result.
+- `ranked_llm:upgrade` generator, producing the 0.2.x → 0.3.0 migration.
+
+### Changed
+
+- `Llm::Credential` positions are now scoped per (owner, task type), so each
+  list ranks from 1 independently. The unique index moves accordingly.
+- The `ranked_llm:views` scaffold gained a "Ranking for" picker, shown only
+  once the app declares task types.
+
+### Notes
+
+- `task_type` is `"default"`, not `NULL`, for the catch-all list. Postgres
+  treats NULLs as distinct in a unique index, so a nullable column would let
+  two rows share a position and silently break the ranking.
+
 ## [0.2.0] - 2026-07-24
 
 ### Added

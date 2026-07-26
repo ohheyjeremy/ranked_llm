@@ -2,6 +2,7 @@ require "positioning" # Llm::Credential uses `positioned` at class-definition ti
 require "httparty"
 require "anthropic"
 require "ranked_llm/version"
+require "ranked_llm/configuration"
 require "ranked_llm/engine"
 
 module RankedLlm
