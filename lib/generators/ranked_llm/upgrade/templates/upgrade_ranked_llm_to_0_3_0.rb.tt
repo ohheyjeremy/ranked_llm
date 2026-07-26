@@ -1,0 +1,33 @@
+class UpgradeRankedLlmTo030 < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def up
+    # "default" rather than NULL for the catch-all list: Postgres treats NULLs
+    # as distinct in a unique index, so a nullable column would let two rows
+    # share a position on the default list and silently break the ranking.
+    # Every existing credential lands here, which is the list that already
+    # served everything, so nothing changes until a task type is ranked.
+    add_column :llm_credentials, :task_type, :string, null: false, default: "default"
+
+    # Positions restart per list, so uniqueness moves to (owner, task type).
+    remove_index :llm_credentials, column: [ :owner_type, :owner_id, :position ], unique: true,
+                 name: "index_llm_credentials_on_owner_and_position"
+    add_index :llm_credentials, [ :owner_type, :owner_id, :task_type, :position ], unique: true,
+              name: "index_llm_credentials_on_owner_task_type_and_position"
+
+    # Existing rows are all the owner's own keys: shared pools didn't exist.
+    add_column :llm_usage_records, :shared, :boolean, null: false, default: false
+  end
+
+  def down
+    remove_column :llm_usage_records, :shared
+
+    remove_index :llm_credentials, column: [ :owner_type, :owner_id, :task_type, :position ], unique: true,
+                 name: "index_llm_credentials_on_owner_task_type_and_position"
+
+    # Only the default list can survive the old one-list-per-owner index.
+    execute "DELETE FROM llm_credentials WHERE task_type <> 'default'"
+
+    add_index :llm_credentials, [ :owner_type, :owner_id, :position ], unique: true,
+              name: "index_llm_credentials_on_owner_and_position"
+    remove_column :llm_credentials, :task_type
+  end
+end

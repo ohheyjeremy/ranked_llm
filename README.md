@@ -27,6 +27,10 @@ bin/rails generate ranked_llm:install
 bin/rails db:migrate
 ```
 
+Already on 0.2.x? Run `bin/rails generate ranked_llm:upgrade && bin/rails db:migrate` instead of `install`. No
+code changes are needed: existing credentials land on the `default` list, which is the one already serving
+everything.
+
 This creates `llm_credentials` and `llm_usage_records` tables, scoped **polymorphically** to whatever your app's
 tenant/owner concept is — the gem never assumes it's called `Account`.
 
@@ -64,6 +68,63 @@ result = Llm::Client.for(current_account).call_tool(
   `Llm::Client::NoCredentialsError` if none are configured (or none are vision-capable when an image is present).
 - Every **successful** call logs an `Llm::UsageRecord` (provider, model, token counts, cost at the time of the
   call) — failed attempts that got skipped in the fallback chain are never logged.
+- After a call, `client.last_provider` / `client.last_model` report which credential actually served it. That
+  isn't necessarily rank 1, since earlier ones may have failed over. Read them off the same instance right
+  after `call_tool` to record provenance on whatever you build from the result.
+
+## Ranking by task type
+
+One rank order for everything is often too blunt: the model that's good enough for chat replies isn't
+necessarily the one you want writing a customer-facing document. Declare the kinds of work your app does:
+
+```ruby
+# config/initializers/ranked_llm.rb
+RankedLlm.configure do |config|
+  config.task_types = {
+    "chat" => "Chat replies",
+    "summarise" => "Summarising"
+  }
+end
+```
+
+then name one at the call site:
+
+```ruby
+Llm::Client.for(current_account, task_type: "chat").call_tool(...)
+```
+
+Each task type keeps its own ranked list, positioned from 1 independently, and falls back through its own ranks.
+**A task type nobody has ranked falls through to the `default` list**, so declaring a task type costs nothing
+until someone actually ranks something for it, and an app that declares none behaves exactly as it always has.
+
+Keys are persisted on `Llm::Credential#task_type`, so renaming one later is a data migration, not just a label
+change. `"default"` is reserved for the catch-all.
+
+## Shared credential pools
+
+Sometimes an owner shouldn't need its own key: a platform offering its own keys to accounts that haven't brought
+one, a parent organisation sharing with its teams, a free allowance on a plan. Override
+`shared_llm_credentials` on your owner model — it returns `[]` by default, so apps that don't do this need
+change nothing:
+
+```ruby
+class Account < ApplicationRecord
+  include Llm::Owned
+
+  def shared_llm_credentials
+    return [] unless use_shared_keys? && under_monthly_cap?
+
+    Account.shared_key_holder.llm_credentials.ranked.map { |c| Llm::SharedCredential.new(c) }
+  end
+end
+```
+
+Borrowed credentials are tried **last**, only once the owner's own ranked list is exhausted. Usage is recorded
+against the **borrowing** owner with `shared: true`, so a cap or a bill is a plain query
+(`account.llm_usage_records.this_month.shared`) with nothing to join back to whoever owns the key.
+
+The gem deliberately has no opinion on where a pool comes from or when an owner may draw on it. Put the opt-in,
+the plan check, and the cap in that override — that's the app's policy, not the gem's.
 
 ## Settings UI
 

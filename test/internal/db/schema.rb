@@ -11,10 +11,11 @@ ActiveRecord::Schema.define do
     t.string :model, null: false
     t.text :api_key, null: false
     t.integer :position, null: false
+    t.string :task_type, null: false, default: "default"
 
     t.timestamps
   end
-  add_index :llm_credentials, [ :owner_type, :owner_id, :position ], unique: true, name: "index_llm_credentials_on_owner_and_position"
+  add_index :llm_credentials, [ :owner_type, :owner_id, :task_type, :position ], unique: true, name: "index_llm_credentials_on_owner_task_type_and_position"
 
   create_table :llm_usage_records, force: true do |t|
     t.references :owner, polymorphic: true, null: false
@@ -23,6 +24,7 @@ ActiveRecord::Schema.define do
     t.integer :input_tokens, null: false
     t.integer :output_tokens, null: false
     t.decimal :cost_usd, precision: 12, scale: 6
+    t.boolean :shared, null: false, default: false
 
     t.timestamps
   end

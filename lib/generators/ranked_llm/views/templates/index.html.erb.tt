@@ -1,12 +1,36 @@
 <div class="max-w-2xl mx-auto mt-8">
   <h1 class="text-2xl font-bold mb-2">AI APIs</h1>
-  <p class="text-sm text-slate-500 mb-6">
+  <p class="text-sm text-slate-500 mb-4">
     Every AI feature in this app uses these credentials in rank order, falling back to the next one if a call
     fails. Drag to reorder.
   </p>
 
+  <%%# Only worth showing once the app declares task types via RankedLlm.configure. %>
+  <%% if Llm::TaskType.declared.any? %>
+    <div class="mb-6">
+      <%%= label_tag :task_type, "Ranking for", class: "block text-sm font-medium mb-1" %>
+      <%%= select_tag :task_type,
+            options_for_select(Llm::TaskType.all.map { |key, label|
+              [ @configured_task_types.include?(key) ? label : "#{label} (using the default order)", key ]
+            }, @task_type),
+            onchange: "location.href = '#{settings_ai_apis_path}?task_type=' + this.value",
+            class: "w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white" %>
+      <p class="text-xs text-slate-500 mt-1">
+        <%% if @task_type == Llm::TaskType::DEFAULT %>
+          The order everything uses unless you rank that job separately.
+        <%% else %>
+          <%%= Llm::TaskType.label(@task_type) %> only.
+          <%% if @credentials.empty? %>
+            Nothing ranked here yet, so it follows the <strong>Everything else</strong> order.
+          <%% end %>
+        <%% end %>
+      </p>
+    </div>
+  <%% end %>
+
   <div class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
     <%%= form_with url: settings_ai_apis_path, method: :post, class: "space-y-4" do |f| %>
+      <%%= hidden_field_tag "llm_credential[task_type]", @task_type %>
       <div>
         <%%= label_tag "llm_credential_provider_and_model", "Provider", class: "block text-sm font-medium mb-1" %>
         <%%= select_tag "llm_credential[provider_and_model]", grouped_options_for_select(Llm::ProviderRegistry.grouped_options),
@@ -23,7 +47,13 @@
 
   <div class="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100" data-controller="ranked-list">
     <%% if @credentials.empty? %>
-      <p class="px-5 py-6 text-sm text-slate-500 text-center">No AI APIs configured yet — every AI feature will be unavailable until you add one.</p>
+      <p class="px-5 py-6 text-sm text-slate-500 text-center">
+        <%% if @task_type == Llm::TaskType::DEFAULT %>
+          No AI APIs configured yet — every AI feature will be unavailable until you add one.
+        <%% else %>
+          Nothing ranked for <%%= Llm::TaskType.label(@task_type).downcase %> yet.
+        <%% end %>
+      </p>
     <%% end %>
     <%% @credentials.each do |credential| %>
       <div class="flex items-center justify-between px-5 py-3 cursor-move" data-ranked-list-target="item" data-move-url="<%%= move_settings_ai_api_path(credential) %>">

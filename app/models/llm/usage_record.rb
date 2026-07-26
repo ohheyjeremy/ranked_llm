@@ -14,6 +14,10 @@ module Llm
     validates :input_tokens, :output_tokens, numericality: { greater_than_or_equal_to: 0 }
 
     scope :this_month, -> { where(created_at: Time.current.all_month) }
+    # Calls served by a credential borrowed from a shared pool, rather than
+    # one the owner holds. What a monthly allowance is usually measured on.
+    scope :shared, -> { where(shared: true) }
+    scope :own, -> { where(shared: false) }
 
     def self.total_cost(scope = all)
       scope.sum(:cost_usd)
